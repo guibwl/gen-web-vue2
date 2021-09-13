@@ -12,8 +12,11 @@
     "noUnusedLocals": true,
     "lib": ["esnext", "dom"],
     "types": [
-      "unplugin-vue2-script-setup/types"
-    ]
+      "unplugin-vue2-script-setup/types", "@types/jest"
+    ],
+    "paths": {
+      "@/*": ["./src/*"],
+    }
   },
   "vueCompilerOptions": {
     "experimentalCompatMode": 2
