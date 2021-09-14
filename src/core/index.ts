@@ -1,8 +1,10 @@
 import {
   defineComponent,
   toRefs,
+  h
 } from "@vue/composition-api";
 import _ from 'lodash';
+import { Fragment } from 'vue-fragment'
 import componentsRender from './componentsRender';
 import type { Data } from './interfaces';
 
@@ -42,9 +44,13 @@ export default defineComponent({
         state,
     } = createScope(data.value, id.value);
     
-    return () => componentsRender({
+    
+    return () => h(
+      Fragment,
+      componentsRender({
         store,
         state,
-    });
+      })
+    )
   },
 });

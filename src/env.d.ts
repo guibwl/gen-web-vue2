@@ -6,3 +6,7 @@ declare module '*.vue' {
   const component: string | Component<any, any, any, any> | AsyncComponent<any, any, any, any> | (() => Component)
   export default component
 }
+
+declare module 'vue-fragment'
+
+declare module 'symbol-tree'
