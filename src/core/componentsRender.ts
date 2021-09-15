@@ -5,69 +5,13 @@ import {
 } from "@vue/composition-api";
 import { camelCase } from "change-case";
 import { isObject, isString } from "@/utils/typeCheck";
+import { loopDFS } from "@/utils/loopTree";
 import componentsImporter from "@/components/index";
 import eventsHandler, { isStringFunction, addUpdatesHandler } from "./eventsHandler";
 import componentsSchemaMiddleware from './componentsSchemaMiddleware';
 import type { Data } from './interfaces';
 
 const componentsLoadCache: Data = {};
-
-export const markRelatedNode = () => {
-  const parentNodes: Data[] = [];
-
-  return (node: Data) => {
-    const [parentNode = null] = parentNodes;
-
-    Reflect.defineProperty(node, "parentNode", {
-      value: parentNode,
-    });
-
-    if (Array.isArray(node?.children) && node.children.length) {
-      const firstChild = node.children[0];
-      const lastChild = node.children[node.children.length - 1];
-
-      Reflect.defineProperty(node, "firstChild", {
-        value: firstChild,
-      });
-
-      Reflect.defineProperty(node, "lastChild", {
-        value: lastChild,
-      });
-
-      parentNodes.unshift(node);
-    }
-
-    if (node.parentNode?.lastChild === node) {
-
-      const [parentNode] = parentNodes;
-
-      // The `parentNode` may just did `unshift` in above,
-      // so here we need to delete second `parentNodes`.
-      if (parentNode === node)
-        parentNodes.splice(1, 1);
-      else
-        parentNodes.shift();
-    }
-
-    return node;
-  }
-};
-
-const markComponentsNodes = (node: Data, state: Data) => {
-
-  const componentsNodes = {
-    [node.id]: node
-  };
-
-  if (isObject(state.__componentsNodes))
-    Object.assign(componentsNodes, state.__componentsNodes);
-
-
-  Reflect.defineProperty(state, '__componentsNodes', {
-    value: componentsNodes,
-    writable: true,
-  });
-}
 
 const childrenEnhancer = ({ node }: Data): Data => {
 
@@ -81,6 +25,7 @@ const hDataEnhancer = ({ node }: Data): Data => {
 
   // Convert to ref, it makes UI can update by state.
   const excludeFromRef = ['on', 'nativeOn']
+
   if (isObject(node?.data))
     Object.keys(node.data).forEach(key => {
       if (!excludeFromRef.includes(key)) {
@@ -206,7 +151,7 @@ const createLeafComponentInstance = (node: Data) => {
 const createComponentInstance = (node: Data) => {
 
   const { data, value: Comp } = node.__component;
-  const children = node.__component_children.slice();
+  const children = node.children.map((child: Data) => child.__component);
   
   const component = h(
     Comp,
@@ -231,68 +176,37 @@ const isLeafNodeChecker = (node: Data): boolean => {
   return false;
 }
 
-const markComponentChildren = (currentNode: Data, parentNode?: Data) => {
-  // init, its mark on currentNode
-  if (currentNode)
-    Reflect.defineProperty(currentNode, "__component_children", {
-      value: null,
-      writable: true,
-    });
-
-  // add values on parentNode, witch is initialized on above.
-  if (parentNode && currentNode)
-    (
-      parentNode.__component_children || (parentNode.__component_children = [])
-    ).push(currentNode.__component);
-};
-
-
 const commitComponents = (node: Data, componentsContainer: any[]) => {
-
-  markComponentChildren(node);
 
   if (isLeafNodeChecker(node)) {
     // start commit process
 
     createLeafComponentInstance(node);
 
-    let parentNode = node.parentNode;
+    let parentNode = window.__symbolTree.parent(node);
     let currentNode = node;
 
-    markComponentChildren(currentNode, parentNode);
-
     while (parentNode) {
-      if (parentNode.lastChild === currentNode) {
+      
+      if (
+        window.__symbolTree.lastChild(parentNode) === currentNode
+      ) {
 
         createComponentInstance(parentNode);
 
-        if (!parentNode.parentNode)
+        if (!window.__symbolTree.parent(parentNode))
           componentsContainer.push(parentNode?.__component);
 
         currentNode = parentNode;
-        parentNode = parentNode.parentNode;
-
-        markComponentChildren(currentNode, parentNode);
+        parentNode = window.__symbolTree.parent(parentNode);
 
       } else {
         parentNode = null;
       }
     }
 
-    if (!node?.parentNode)
+    if (!window.__symbolTree.parent(node))
       componentsContainer.push(node?.__component);
-  }
-}
-
-export const loopDFS = (nodes: Data[], cb: CallableFunction) => {
-  nodes = [...nodes];
-  let n = 0;
-  while (nodes.length) {
-    const node: Data = nodes.shift() || {};
-    if (Array.isArray(node?.children) && node.children.length)
-      nodes.unshift(...node.children);
-
-    cb(node, n++, nodes);
   }
 }
 
@@ -305,7 +219,6 @@ const componentsRender = ({
 
   const componentsFactory = (schema: Data[]): any[] => {
     const componentsContainer: any[] = [];
-    const markRelatedNodeInstance = markRelatedNode();
 
     loopDFS(schema, (node: Data) => {
 
@@ -314,10 +227,6 @@ const componentsRender = ({
 
       if (!isString(node?.id))
         throw new Error(`expect 'id' property as a string in node inside the 'schema', but got ${node?.id}.`);
-
-      markRelatedNodeInstance(node);
-
-      markComponentsNodes(node, state);
 
       addUpdatesHandler({ node, store, state });
 

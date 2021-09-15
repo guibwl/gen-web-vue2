@@ -190,6 +190,33 @@ export const adminBpsMockVue2 = {
                     children: 'Hover me'
                 }
             ]
+        },
+        {
+            type: 'div',
+            id: 'div-text-00',
+            children: [
+                {
+                    type: 'p',
+                    id: 'p-text-00',
+                    children: '文本节点测试'
+                },
+                {
+                    type: 'p',
+                    id: 'p-text-01',
+                    children: [
+                        {
+                            type: 'span',
+                            id: 'span-text-00',
+                            children: '描述1'
+                        },
+                        {
+                            type: 'span',
+                            id: 'span-text-02',
+                            children: '描述2'
+                        }
+                    ]
+                }
+            ]
         }
     ]
 }
