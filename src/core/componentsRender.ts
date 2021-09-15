@@ -5,7 +5,7 @@ import {
 } from "@vue/composition-api";
 import { camelCase } from "change-case";
 import { isObject, isString } from "@/utils/typeCheck";
-import { loopDFS } from "@/utils/loopTree";
+import { walk } from "@/utils/loopTree";
 import componentsImporter from "@/components/index";
 import eventsHandler, { isStringFunction, addUpdatesHandler } from "./eventsHandler";
 import componentsSchemaMiddleware from './componentsSchemaMiddleware';
@@ -13,13 +13,6 @@ import type { Data } from './interfaces';
 
 const componentsLoadCache: Data = {};
 
-const childrenEnhancer = ({ node }: Data): Data => {
-
-  if (typeof node.children === 'string')
-    node.children = ref(node.children);
-
-  return node;
-}
 
 const hDataEnhancer = ({ node }: Data): Data => {
 
@@ -54,6 +47,15 @@ const hDataEnhancer = ({ node }: Data): Data => {
     Object.assign(data, {nativeOn: eventsHandler({ node, method: 'nativeOn' })});
 
   return data;
+}
+
+
+const childrenEnhancer = ({ node }: Data): Data => {
+
+  if (typeof node.children === 'string')
+    node.children = ref(node.children);
+
+  return node;
 }
 
 const defineAntdComponent = (node: Data, data: Data, typeNameCamelCase: string) => {
@@ -124,34 +126,25 @@ const componentsGenerator = (node: Data, data: Data,) => {
   }
 }
 
-const getLeafChildren = (node: Data, Comp: unknown) => {
-  const children = node?.children?.value || node?.children;
 
-  if (isString(children) && isString(Comp)) {
+const isLeafNodeChecker = (node: Data): boolean => {
+  const child = node?.children;
 
-    return children;
-  } else if (isString(children)) {
+  if (!child) return true;
+  if (Array.isArray(child) && !child?.length) return true;
+  if (typeof child === 'string') return true;
+  if (typeof child?.value === 'string') return true;
 
-    return children;
-  }
-}
-
-const createLeafComponentInstance = (node: Data) => {
-  
-  const Comp = node?.__component?.value;
-  const data = node?.__component?.data;
-  const children = getLeafChildren(node, Comp);
-
-  Reflect.defineProperty(node, "__component", {
-    value: h(Comp, data, children),
-    writable: true,
-  });
+  return false;
 }
 
 const createComponentInstance = (node: Data) => {
 
   const { data, value: Comp } = node.__component;
-  const children = node.children.map((child: Data) => child.__component);
+  const children =
+    Array.isArray(node.children) ?
+    node.children.map((child: Data) => child.__component) :
+    node?.children?.value || node?.children;
   
   const component = h(
     Comp,
@@ -165,50 +158,6 @@ const createComponentInstance = (node: Data) => {
   });
 }
 
-const isLeafNodeChecker = (node: Data): boolean => {
-  const child = node?.children;
-
-  if (!child) return true;
-  if (Array.isArray(child) && !child?.length) return true;
-  if (typeof child === 'string') return true;
-  if (typeof child?.value === 'string') return true;
-
-  return false;
-}
-
-const commitComponents = (node: Data, componentsContainer: any[]) => {
-
-  if (isLeafNodeChecker(node)) {
-    // start commit process
-
-    createLeafComponentInstance(node);
-
-    let parentNode = window.__symbolTree.parent(node);
-    let currentNode = node;
-
-    while (parentNode) {
-      
-      if (
-        window.__symbolTree.lastChild(parentNode) === currentNode
-      ) {
-
-        createComponentInstance(parentNode);
-
-        if (!window.__symbolTree.parent(parentNode))
-          componentsContainer.push(parentNode?.__component);
-
-        currentNode = parentNode;
-        parentNode = window.__symbolTree.parent(parentNode);
-
-      } else {
-        parentNode = null;
-      }
-    }
-
-    if (!window.__symbolTree.parent(node))
-      componentsContainer.push(node?.__component);
-  }
-}
 
 const componentsRender = ({
   store,
@@ -218,32 +167,38 @@ const componentsRender = ({
   const componentsKeys: string[] = [];
 
   const componentsFactory = (schema: Data[]): any[] => {
-    const componentsContainer: any[] = [];
 
-    loopDFS(schema, (node: Data) => {
-
-      if (!node?.id)
+    walk(
+      schema[0],
+      node => {
+        if (!node?.id)
         throw new Error(`expect 'id' property in each node inside the 'schema'.`);
 
-      if (!isString(node?.id))
-        throw new Error(`expect 'id' property as a string in node inside the 'schema', but got ${node?.id}.`);
+        if (!isString(node?.id))
+          throw new Error(`expect 'id' property as a string in node inside the 'schema', but got ${node?.id}.`);
 
-      addUpdatesHandler({ node, store, state });
+        addUpdatesHandler({ node, store, state });
 
-      const data = hDataEnhancer({ node });
+        const data = hDataEnhancer({ node });
 
-      node = childrenEnhancer({ node });
+        node = childrenEnhancer({ node });
 
-      node = componentsSchemaMiddleware(node);
+        node = componentsSchemaMiddleware(node);
 
-      componentsGenerator(node, data);
+        componentsGenerator(node, data);
 
-      commitComponents(node, componentsContainer);
+        if (isLeafNodeChecker(node))
+            createComponentInstance(node);
 
-      componentsKeys.push(node.id);
-    });
+        componentsKeys.push(node.id);
+      },
+      node => {
+        createComponentInstance(node);
+      }
+    )
 
-    return componentsContainer;
+    
+    return schema.map(node => node.__component);
   };
 
   const result = componentsFactory(componentsSchema);

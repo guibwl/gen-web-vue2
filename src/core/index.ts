@@ -8,7 +8,7 @@ import { Fragment } from 'vue-fragment'
 import SymbolTree from 'symbol-tree'
 import componentsRender from './componentsRender';
 import { isObject } from "@/utils/typeCheck";
-import {loopDFS} from '../utils/loopTree';
+import { loopDFS } from "@/utils/loopTree";
 import type { Data } from './interfaces';
 
 const store: Data = {};
